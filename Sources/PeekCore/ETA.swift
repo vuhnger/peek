@@ -37,13 +37,16 @@ public struct RunProgress: Sendable, Equatable {
 public enum ETA {
   public static let maxSamples = 30
 
-  public static func estimate(for run: WorkflowRun, among runs: [WorkflowRun]) -> ETAEstimate? {
+  public static func estimate(
+    for run: WorkflowRun, among runs: [WorkflowRun], predictionAt: Date = Date()
+  ) -> ETAEstimate? {
     let durations =
       runs
       .filter { $0.id != run.id && $0.state == .passed && comparable(run, $0) }
       .sorted { $0.queuedAt > $1.queuedAt }
       .compactMap { candidate -> TimeInterval? in
         guard let finished = candidate.updatedAt,
+          finished <= predictionAt,
           finished >= (candidate.runStartedAt ?? candidate.queuedAt)
         else { return nil }
         let duration = finished.timeIntervalSince(candidate.queuedAt)

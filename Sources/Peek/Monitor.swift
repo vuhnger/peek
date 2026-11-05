@@ -340,7 +340,7 @@ final class Monitor {
         })
       var etas: [Int: ETAEstimate] = [:]
       for run in group?.branches.flatMap(\.runs) ?? [] where run.state == .running {
-        etas[run.id] = ETA.estimate(for: run, among: history)
+        etas[run.id] = ETA.estimate(for: run, among: history, predictionAt: now)
       }
       let fetched = Fetched(
         id: repo.key, host: repo.host, meta: meta, group: group,
@@ -381,7 +381,7 @@ final class Monitor {
         metas[id] = fetched.meta
         let visible = fetched.group?.branches.flatMap(\.runs) ?? []
         live.formUnion(visible.map { rowKey(id, $0.id) })
-        apply(fetched, to: model)
+        apply(fetched, to: model, now: now)
         menuInputs[id] = MenuBarRepo(visible: visible, history: fetched.rawRuns)
         var tracker = trackers[id] ?? RunTracker()
         events += tracker.ingest(repo: id, runs: visible, host: fetched.host)
@@ -443,7 +443,7 @@ final class Monitor {
     if !events.isEmpty { onEvents?(events) }
   }
 
-  private func apply(_ fetched: Fetched, to model: RepoModel) {
+  private func apply(_ fetched: Fetched, to model: RepoModel, now: Date) {
     let branches = (fetched.group?.branches ?? []).map { branch in
       BranchModel(
         name: branch.branch,
@@ -462,7 +462,7 @@ final class Monitor {
     if branches != model.branches { model.branches = branches }
     let visible = fetched.group?.branches.flatMap(\.runs) ?? []
     let glyph = MenuBarGlyphs.glyph(
-      for: MenuBarRepo(visible: visible, history: fetched.rawRuns), now: Date())
+      for: MenuBarRepo(visible: visible, history: fetched.rawRuns), now: now)
     if glyph != model.glyph { model.glyph = glyph }
     let newest = visible.map(\.activityDate).max()
     if newest != model.newest { model.newest = newest }

@@ -67,7 +67,8 @@ private enum EvaluateETA {
         var target = record.run
         target.jobs = visibleJobs(record.run.jobs ?? [], at: now)
         let before = baseline(for: record.run, among: history.map(\.run), now: now)
-        let estimate = ETA.estimate(for: target, among: history.map(\.run))
+        let estimate = ETA.estimate(
+          for: target, among: history.map(\.run), predictionAt: now)
         let remaining = estimate?.remaining(elapsed: now.timeIntervalSince(target.queuedAt))
         let status =
           remaining != nil

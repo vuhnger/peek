@@ -48,7 +48,7 @@ public enum MenuBarGlyphs {
     let candidates = repos.flatMap { repo in
       repo.visible.filter { $0.state == .running }.map { run in
         let started = run.queuedAt
-        let progress = ETA.estimate(for: run, among: repo.history).map {
+        let progress = ETA.estimate(for: run, among: repo.history, predictionAt: now).map {
           $0.progress(elapsed: now.timeIntervalSince(started))
         }
         return (started: started, progress: progress)

@@ -22,6 +22,7 @@ struct ETATests {
     var runs = (1...35).map {
       successfulRun(id: $0, created: Double($0), duration: 100)
     }
+
     runs.append(successfulRun(id: 40, workflow: 2, created: 500, duration: 9000))
     runs.append(successfulRun(id: 41, event: "schedule", created: 500, duration: 9000))
     runs.append(makeRun(id: 42, conclusion: "failure", created: 500, updated: 9500))
@@ -29,6 +30,16 @@ struct ETATests {
     let estimate = try #require(ETA.estimate(for: running, among: runs))
     #expect(estimate.durations == Array(repeating: 100, count: 30))
     #expect(estimate.buffer == 1.1)
+  }
+
+  @Test func excludesHistoryCompletedAfterThePredictionBoundary() throws {
+    let history = [
+      successfulRun(id: 1, created: 0, duration: 90),
+      successfulRun(id: 2, created: 100, duration: 100),
+    ]
+    let estimate = try #require(
+      ETA.estimate(for: running, among: history, predictionAt: at(150)))
+    #expect(estimate.durations == [90])
   }
 
   @Test func recalculatesRemainingTimeFromRunsThatOutlastTheElapsedTime() throws {
