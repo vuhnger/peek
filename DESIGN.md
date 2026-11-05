@@ -117,7 +117,7 @@ Cards have 22px rounded corners. Branch pills and the progress bar (4px tall) ar
 A header button with a state glyph (16px), `owner/name`, the age of the newest run and a chevron. The glyph shows a running or queued run if there is one, otherwise the result of the newest finished run. Cards sort newest first. A card is collapsed unless a run is running or queued, and clicking the header toggles it. Expanded, it lists each branch pill and its run rows, both newest first. A missing repository shows one line of secondary text and cannot expand.
 
 ### Run row
-State glyph (13px), workflow name, PR number as `#123` (`!12` for a GitLab merge request), the starter's avatar (16px), the run title and a trailing time. A running row shows elapsed time in amber and remaining time in secondary. Remaining time is prefixed with `~` when fewer than three past runs inform it. The progress bar fills at a constant rate with no visible steps. Clicking a row opens the run on GitHub or GitLab and closes the panel.
+State glyph (13px), workflow name, PR number as `#123` (`!12` for a GitLab merge request), the starter's avatar (16px), the run title and a trailing time. A running row shows queue-to-completion elapsed time in amber and remaining time in secondary. Remaining time is prefixed with `~`; when its history is exhausted, the row shows `Taking longer`. The progress bar fills at a constant rate with no visible steps. Clicking a row opens the run on GitHub or GitLab and closes the panel.
 
 ### Notice card
 A 64px glass card tinted orange, with a 20px glyph and up to two lines of callout text. The signed-out notice carries a prominent Retry button.
