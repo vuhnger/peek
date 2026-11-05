@@ -11,7 +11,7 @@ struct RunRowModelTests {
       #"{"id":1,"workflow_id":2,"created_at":"2026-10-27T20:59:22Z","run_started_at":"2026-10-27T20:59:52Z","run_attempt":1}"#
         .utf8)
     let run = try JSONDecoder.github.decode(WorkflowRun.self, from: json)
-    let estimate = ETAEstimate(durations: [60, 120], buffer: 1.1)
+    let estimate = ETAEstimate(durations: [60, 120])
     let row = RunRowModel(run: run, eta: estimate)
     #expect(row.startedAt == run.createdAt)
     #expect(row.progress(at: run.createdAt.addingTimeInterval(30))?.isOverdue == false)

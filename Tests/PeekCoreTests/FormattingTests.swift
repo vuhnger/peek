@@ -25,8 +25,9 @@ struct FormattingTests {
 
   @Test(
     arguments: [
-      (30.0, "<1m left"), (0, "Taking longer than expected"), (59, "1m left"), (60, "1m left"),
-      (61, "1m 30s left"), (119, "2m left"), (180, "3m left"),
+      (30.0, "<1m left"), (0, "Taking longer than expected"), (59, "<1m left"), (60, "1m left"),
+      (61, "1m left"), (74, "1m left"), (75, "1m 30s left"), (91, "1m 30s left"),
+      (104, "1m 30s left"), (105, "2m left"), (119, "2m left"), (180, "3m left"),
       (-30, "Taking longer than expected"), (-60, "Taking longer than expected"),
       (-120, "Taking longer than expected"), (-179, "Taking longer than expected"),
     ] as [(Double, String)])

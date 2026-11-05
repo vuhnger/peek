@@ -85,7 +85,7 @@ private enum EvaluateETA {
           "baselineSampleCount": before?.samples ?? 0,
           "afterRemainingSeconds": nullable(remaining),
           "afterSampleCount": estimate?.sampleCount ?? 0,
-          "afterBuffer": nullable(estimate?.buffer), "afterStatus": status,
+          "afterStatus": status,
           "observedJobCount": target.jobs?.count ?? 0,
           "historyWarmupCount": history.filter { $0.split == "warmup" }.count,
           "historyEarlierHoldoutCount": history.filter { $0.split == "holdout" }.count,
@@ -102,7 +102,8 @@ private enum EvaluateETA {
       "datasetSHA256": SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined(),
       "baselineSourceCommit": "eb5d322", "generatedAt": clock.string(from: Date()),
       "target": "Current-attempt queue-to-workflow-completion time",
-      "calibration":
+      "objective": "Mean absolute error without a directional safety margin",
+      "historyPolicy":
         "Only completed past history is available; earlier holdout outcomes can enter later forecasts",
       "warmupRunCount": dataset.runs.filter { $0.split == "warmup" }.count,
       "holdoutRunCount": holdout.count,
@@ -181,7 +182,7 @@ private enum EvaluateETA {
       "meanAbsoluteErrorSeconds": nullable(mean(errors.map(abs))),
       "medianAbsoluteErrorSeconds": nullable(median(errors.map(abs))),
       "meanSignedErrorSeconds": nullable(mean(errors)),
-      "pinballLoss90Seconds": nullable(mean(errors.map { $0 < 0 ? -0.9 * $0 : 0.1 * $0 })),
+      "rootMeanSquaredErrorSeconds": nullable(mean(errors.map { $0 * $0 }).map { sqrt($0) }),
     ]
   }
 

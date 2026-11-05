@@ -60,10 +60,10 @@ struct MenuBarGlyphTests {
         == .running(progress: nil))
   }
 
-  @Test func runningProgressUsesTheConservativeRemainingEstimate() {
+  @Test func runningProgressUsesTheMedianRemainingEstimate() {
     let glyph = MenuBarGlyphs.glyph(
       for: repo([running(id: 1)], history: history()), now: at(30))
-    #expect(glyph == .running(progress: 5.0 / 12))
+    #expect(glyph == .running(progress: 0.5))
   }
 
   @Test func progressSnapsToTwelfthsSoTheIconRedrawsRarely() {
@@ -157,7 +157,7 @@ struct MenuBarGlyphTests {
     ]
     #expect(
       MenuBarGlyphs.glyph(repos: repos, signedOut: false, now: at(30))
-        == .running(progress: 5.0 / 12))
+        == .running(progress: 0.5))
   }
 
   @Test func eachRunUsesItsOwnReposHistory() {
@@ -165,7 +165,7 @@ struct MenuBarGlyphTests {
     let otherHistory = [repo([running(id: 1)]), repo([], history: history())]
     #expect(
       MenuBarGlyphs.glyph(repos: ownHistory, signedOut: false, now: at(30))
-        == .running(progress: 5.0 / 12))
+        == .running(progress: 0.5))
     #expect(
       MenuBarGlyphs.glyph(repos: otherHistory, signedOut: false, now: at(30))
         == .running(progress: nil))

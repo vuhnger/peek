@@ -8,14 +8,13 @@ struct ETATests {
     id: 999, workflow: 1, status: "in_progress", conclusion: nil, event: "push",
     created: 10_000, started: 10_000, jobs: [WorkflowJob(name: "ci", status: "in_progress")])
 
-  @Test func usesTheNinetiethPercentileWithAnInitialTenPercentBuffer() throws {
+  @Test func usesTheMidpointMedianWithoutASafetyMargin() throws {
     let runs = (1...10).map {
       successfulRun(id: $0, created: Double($0), duration: Double($0 * 10))
     }
     let estimate = try #require(ETA.estimate(for: running, among: runs))
-    #expect(abs(try #require(estimate.remaining(elapsed: 0)) - 99) < 0.001)
+    #expect(estimate.remaining(elapsed: 0) == 55)
     #expect(estimate.sampleCount == 10)
-    #expect(estimate.buffer == 1.1)
   }
 
   @Test func usesThirtyNewestComparableValidSuccessfulSamples() throws {
@@ -29,7 +28,6 @@ struct ETATests {
     runs.append(makeRun(id: 43, created: 600, jobs: [WorkflowJob(name: "ci")]))
     let estimate = try #require(ETA.estimate(for: running, among: runs))
     #expect(estimate.durations == Array(repeating: 100, count: 30))
-    #expect(estimate.buffer == 1.1)
   }
 
   @Test func excludesHistoryCompletedAfterThePredictionBoundary() throws {
@@ -47,8 +45,9 @@ struct ETATests {
       successfulRun(id: $0.offset, created: Double($0.offset), duration: $0.element)
     }
     let estimate = try #require(ETA.estimate(for: running, among: runs))
-    #expect(abs(try #require(estimate.remaining(elapsed: 100)) - 560) < 0.001)
-    #expect(abs(try #require(estimate.remaining(elapsed: 590)) - 70) < 0.001)
+    #expect(estimate.remaining(elapsed: 100) == 200)
+    #expect(estimate.remaining(elapsed: 120) == 330)
+    #expect(estimate.remaining(elapsed: 590) == 10)
     #expect(estimate.remaining(elapsed: 600) == nil)
     #expect(estimate.remaining(elapsed: 700) == nil)
   }
@@ -67,7 +66,7 @@ struct ETATests {
     #expect(ETA.estimate(for: retry, among: runs)?.durations == [20, 20, 20])
   }
 
-  @Test func theSafetyMarginDoesNotDisappearWhileTheClockAdvances() throws {
+  @Test func countsDownWithTheClockUntilTheSurvivorSetChanges() throws {
     let estimate = try #require(
       ETA.estimate(
         for: running, among: [successfulRun(id: 1, created: 0, duration: 100)]))
@@ -131,13 +130,12 @@ struct ETATests {
     #expect(ETA.estimate(for: running, among: history)?.durations == [90])
   }
 
-  @Test func calibratesTheBufferUsingEarlierPredictionsOnly() throws {
-    let growing = (0..<20).map {
-      successfulRun(id: $0, created: Double($0), duration: pow(2, Double($0)))
+  @Test func anOutlierDoesNotInflateTheTypicalEstimate() throws {
+    let history = [100.0, 110, 120, 130, 3600].enumerated().map {
+      successfulRun(id: $0.offset, created: Double($0.offset), duration: $0.element)
     }
-    let estimate = try #require(ETA.estimate(for: running, among: growing))
-    #expect(estimate.buffer > 1.1)
-    #expect(try #require(estimate.remaining(elapsed: 0)) >= pow(2, 19))
+    let estimate = try #require(ETA.estimate(for: running, among: history))
+    #expect(estimate.remaining(elapsed: 0) == 120)
   }
 
   @Test func progressHandlesNegativeNonFiniteAndExhaustedHistory() throws {
@@ -147,7 +145,7 @@ struct ETATests {
     #expect(estimate.progress(elapsed: -5).fraction == 0)
     #expect(estimate.progress(elapsed: .nan).fraction == 0)
     #expect(estimate.remaining(elapsed: .infinity) == nil)
-    #expect(estimate.progress(elapsed: 30).fraction < 0.25)
+    #expect(estimate.progress(elapsed: 30).fraction == 0.25)
     #expect(!estimate.progress(elapsed: 119).isOverdue)
     #expect(estimate.progress(elapsed: 120).isOverdue)
     #expect(estimate.progress(elapsed: 150).fraction == 1)

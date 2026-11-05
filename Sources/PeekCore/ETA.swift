@@ -2,16 +2,19 @@ import Foundation
 
 public struct ETAEstimate: Sendable, Equatable {
   public let durations: [TimeInterval]
-  public let buffer: Double
 
   public var sampleCount: Int { durations.count }
 
   public func remaining(elapsed: TimeInterval) -> TimeInterval? {
     guard elapsed.isFinite else { return nil }
     let elapsed = max(0, elapsed)
-    let survivors = durations.filter { $0 > elapsed }
-    guard let duration = ETA.percentile(survivors) else { return nil }
-    return duration * buffer - elapsed
+    let survivors = durations.filter { $0 > elapsed }.sorted()
+    guard !survivors.isEmpty else { return nil }
+    let middle = survivors.count / 2
+    let duration =
+      survivors.count.isMultiple(of: 2)
+      ? (survivors[middle - 1] + survivors[middle]) / 2 : survivors[middle]
+    return duration - elapsed
   }
 
   public func progress(elapsed: TimeInterval) -> RunProgress {
@@ -53,15 +56,8 @@ public enum ETA {
         return duration.isFinite && duration > 0 ? duration : nil
       }
       .prefix(maxSamples)
-      .reversed()
     guard !durations.isEmpty else { return nil }
-    let samples = Array(durations)
-    let ratios = samples.indices.dropFirst(5).compactMap { index -> Double? in
-      guard let prediction = percentile(Array(samples[..<index])) else { return nil }
-      return samples[index] / prediction
-    }
-    let buffer = ratios.count >= 10 ? max(1.1, percentile(ratios) ?? 1.1) : 1.1
-    return ETAEstimate(durations: samples, buffer: buffer)
+    return ETAEstimate(durations: Array(durations))
   }
 
   public static func comparable(_ run: WorkflowRun, _ candidate: WorkflowRun) -> Bool {
@@ -77,11 +73,5 @@ public enum ETA {
     let skipped = Set(jobs.filter { $0.conclusion == "skipped" }.map(\.name))
     return !selected.isEmpty && selected.isSubset(of: executed)
       && skipped.isDisjoint(with: executed)
-  }
-
-  static func percentile(_ values: [Double]) -> Double? {
-    guard !values.isEmpty else { return nil }
-    let sorted = values.sorted()
-    return sorted[Int(ceil(Double(sorted.count) * 0.9)) - 1]
   }
 }

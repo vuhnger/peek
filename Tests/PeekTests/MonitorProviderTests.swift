@@ -164,7 +164,7 @@ struct MonitorProviderTests {
     #expect(row.estimate?.durations == [100])
     #expect(row.startedAt == active.createdAt)
     #expect(row.pullRequest == 42)
-    #expect(monitor.menuBarGlyph == .running(progress: 0.25))
+    #expect(monitor.menuBarGlyph == .running(progress: 1.0 / 3))
     github.setTiming([], failure: .server(503))
     await monitor.pollOnce()
     #expect(row.state == .running)

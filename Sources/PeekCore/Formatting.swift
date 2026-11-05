@@ -27,8 +27,8 @@ public enum Formatting {
 
   public static func remaining(_ secondsLeft: TimeInterval) -> String {
     guard secondsLeft.isFinite, secondsLeft > 0 else { return "Taking longer than expected" }
-    let seconds = wholeSeconds(ceil(secondsLeft / 30) * 30)
-    if seconds < 60 { return "<1m left" }
+    if secondsLeft < 60 { return "<1m left" }
+    let seconds = wholeSeconds((secondsLeft / 30).rounded() * 30)
     let minutes = seconds / 60
     return seconds % 60 == 0 ? "\(minutes)m left" : "\(minutes)m 30s left"
   }
