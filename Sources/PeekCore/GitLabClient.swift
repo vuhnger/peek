@@ -118,6 +118,7 @@ public actor GitLabClient: RunProvider {
   private var token: String?
   private var me: Viewer?
   private var cache: [URL: (etag: String, body: Data)] = [:]
+  private var timingHistories: [String: (fetchedAt: Date, runs: [WorkflowRun])] = [:]
 
   public init(
     host: String,
@@ -184,6 +185,92 @@ public actor GitLabClient: RunProvider {
     let page: [Branch] = try await get(
       "projects/\(repo.id)/repository/branches?per_page=\(Self.pageSize)")
     return page.count < Self.pageSize ? Set(page.map(\.name)) : nil
+  }
+
+  public func timingHistory(for active: [WorkflowRun], repo: Repo) async throws -> [WorkflowRun] {
+    guard !active.isEmpty else { return [] }
+    let path = "projects/\(repo.id)/pipelines?status=success&per_page=100&order_by=id&sort=desc"
+    var history = timingHistories[path]
+    if history.map({ now().timeIntervalSince($0.fetchedAt) >= 60 }) ?? true {
+      let pipelines: [GitLabPipeline] = try await list(path)
+      let previous = Dictionary(
+        (history?.runs ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+      history = (
+        now(),
+        pipelines.map { pipeline in
+          if let old = previous[pipeline.id], old.updatedAt == pipeline.updatedAt { return old }
+          return GitLabMapping.run(pipeline, project: repo, actor: nil, mergeRequest: nil)
+        }
+      )
+    }
+    guard var history else { return [] }
+    var result: [Int: WorkflowRun] = [:]
+    for original in active {
+      let run = try await timing(for: original, repo: repo)
+      result[run.id] = run
+      guard run.runAttempt != nil else { continue }
+      var matches = 0
+      for offset in stride(from: 0, to: history.runs.count, by: 4) {
+        let indices = offset..<min(offset + 4, history.runs.count)
+        let enriched = try await withThrowingTaskGroup(of: (Int, WorkflowRun).self) { group in
+          for index in indices {
+            let candidate = history.runs[index]
+            group.addTask {
+              let enriched =
+                candidate.jobs == nil
+                ? try await self.timing(for: candidate, repo: repo) : candidate
+              return (index, enriched)
+            }
+          }
+          var enriched: [(Int, WorkflowRun)] = []
+          for try await item in group { enriched.append(item) }
+          return enriched
+        }
+        for (index, candidate) in enriched {
+          history.runs[index] = candidate
+          result[candidate.id] = candidate
+          if ETA.comparable(run, candidate) { matches += 1 }
+        }
+        if matches >= ETA.maxSamples { break }
+      }
+    }
+    timingHistories[path] = history
+    return Array(result.values)
+  }
+
+  private struct Job: Decodable {
+    let name: String
+    let status: String
+    let retried: Bool?
+    let createdAt: Date?
+    let startedAt: Date?
+    let finishedAt: Date?
+  }
+
+  private func timing(for original: WorkflowRun, repo: Repo) async throws -> WorkflowRun {
+    var jobs: [Job] = []
+    var complete = false
+    for page in 1...10 {
+      let batch: [Job] = try await get(
+        "projects/\(repo.id)/pipelines/\(original.id)/jobs?include_retried=true&per_page=100&page=\(page)"
+      )
+      jobs += batch
+      if batch.count < Self.pageSize {
+        complete = true
+        break
+      }
+    }
+    guard complete else { throw GitHubError.decoding }
+    var run = original
+    run.jobs = jobs.filter { $0.retried != true }.map { job in
+      let mapped = GitLabMapping.status(job.status)
+      return WorkflowJob(
+        name: job.name, status: mapped.status, conclusion: mapped.conclusion,
+        createdAt: job.createdAt, startedAt: job.startedAt, completedAt: job.finishedAt)
+    }
+    let retried = jobs.contains { $0.retried == true } || Set(jobs.map(\.name)).count < jobs.count
+    run.runAttempt = retried ? nil : 1
+    return run
   }
 
   private func mergeRequests(repo: Repo, numbers: Set<Int>) async -> [Int: GitLabMergeRequest] {

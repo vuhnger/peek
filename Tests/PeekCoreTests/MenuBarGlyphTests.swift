@@ -6,7 +6,7 @@ import Testing
 private func running(id: Int, started: TimeInterval = 0, workflow: Int = 1) -> WorkflowRun {
   makeRun(
     id: id, workflow: workflow, status: "in_progress", conclusion: nil, created: started,
-    started: started)
+    started: started, jobs: [WorkflowJob(name: "ci", status: "in_progress")])
 }
 
 private func history(workflow: Int = 1) -> [WorkflowRun] {
@@ -60,10 +60,10 @@ struct MenuBarGlyphTests {
         == .running(progress: nil))
   }
 
-  @Test func runningProgressFollowsTheMedianOfPastRuns() {
+  @Test func runningProgressUsesTheConservativeRemainingEstimate() {
     let glyph = MenuBarGlyphs.glyph(
       for: repo([running(id: 1)], history: history()), now: at(30))
-    #expect(glyph == .running(progress: 0.5))
+    #expect(glyph == .running(progress: 5.0 / 12))
   }
 
   @Test func progressSnapsToTwelfthsSoTheIconRedrawsRarely() {
@@ -72,7 +72,7 @@ struct MenuBarGlyphTests {
     #expect(a == b)
   }
 
-  @Test func runningPastTheMedianIsOverdue() {
+  @Test func runningPastAllComparableHistoryIsOverdue() {
     let glyph = MenuBarGlyphs.glyph(
       for: repo([running(id: 1)], history: history()), now: at(90))
     #expect(glyph == .overdue)
@@ -157,7 +157,7 @@ struct MenuBarGlyphTests {
     ]
     #expect(
       MenuBarGlyphs.glyph(repos: repos, signedOut: false, now: at(30))
-        == .running(progress: 0.5))
+        == .running(progress: 5.0 / 12))
   }
 
   @Test func eachRunUsesItsOwnReposHistory() {
@@ -165,7 +165,7 @@ struct MenuBarGlyphTests {
     let otherHistory = [repo([running(id: 1)]), repo([], history: history())]
     #expect(
       MenuBarGlyphs.glyph(repos: ownHistory, signedOut: false, now: at(30))
-        == .running(progress: 0.5))
+        == .running(progress: 5.0 / 12))
     #expect(
       MenuBarGlyphs.glyph(repos: otherHistory, signedOut: false, now: at(30))
         == .running(progress: nil))

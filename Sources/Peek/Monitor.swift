@@ -305,7 +305,7 @@ final class Monitor {
         let branches = try? await client.branches(repo: repo)
         meta = RepoMeta(repo: repo, branches: branches ?? cached?.branches, fetchedAt: now)
       }
-      let runs = BuiltInRuns.filter(try await client.runs(repo: repo), shown: showBuiltIn)
+      var runs = BuiltInRuns.filter(try await client.runs(repo: repo), shown: showBuiltIn)
       func grouped(_ runs: [WorkflowRun]) -> RepoGroup? {
         RunGrouping.groups(
           [
@@ -318,15 +318,33 @@ final class Monitor {
       }
       let shown = await client.resolvingPullRequests(
         grouped(runs)?.branches.flatMap(\.runs) ?? [], repo: repo)
+      let active = shown.filter { $0.state == .running || $0.state == .queued }
+      let history: [WorkflowRun]
+      do {
+        history = try await client.timingHistory(for: active, repo: repo)
+      } catch GitHubError.unauthorized {
+        throw GitHubError.unauthorized
+      } catch GitHubError.rateLimited(let resumeAt) {
+        throw GitHubError.rateLimited(resumeAt: resumeAt)
+      } catch {
+        history = []
+      }
+      let timings = Dictionary(history.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+      runs = runs.map { timings[$0.id] ?? $0 }
       let resolved = Dictionary(shown.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-      let group = grouped(runs.map { resolved[$0.id] ?? $0 })
+      let group = grouped(
+        runs.map { run in
+          var run = run
+          run.pullRequests = resolved[run.id]?.pullRequests ?? run.pullRequests
+          return run
+        })
       var etas: [Int: ETAEstimate] = [:]
       for run in group?.branches.flatMap(\.runs) ?? [] where run.state == .running {
-        etas[run.id] = ETA.estimate(for: run, among: runs)
+        etas[run.id] = ETA.estimate(for: run, among: history)
       }
       let fetched = Fetched(
         id: repo.key, host: repo.host, meta: meta, group: group,
-        rawRuns: runs, etas: etas)
+        rawRuns: history, etas: etas)
       return Outcome(repo: repo, result: .success(fetched))
     } catch let error as GitHubError {
       return Outcome(repo: repo, result: .failure(error))

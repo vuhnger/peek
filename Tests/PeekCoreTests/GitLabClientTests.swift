@@ -132,6 +132,43 @@ private func busyRoute(_ request: URLRequest) -> StubReply {
 
 @Suite(.serialized)
 struct GitLabClientTests {
+  @Test func enrichesFreshPipelinesAndCachesTheirCompletedJobs() async throws {
+    let client = makeClient { request in
+      if request.url?.path.hasSuffix("/pipelines") == true {
+        return StubReply(
+          body: Data(
+            """
+            [{"id":10,"project_id":101,"status":"success","source":"push","created_at":"2023-11-14T22:13:20Z","updated_at":"2023-11-14T22:14:20Z"}]
+            """.utf8))
+      }
+      return StubReply(body: Data(#"[{"name":"ci","status":"success"}]"#.utf8))
+    }
+    let active = makeRun(id: 50, workflow: 101, status: "in_progress", conclusion: nil)
+    let first = try await client.timingHistory(for: [active], repo: project)
+    _ = try await client.timingHistory(for: [active], repo: project)
+    let current = try #require(first.first { $0.id == 50 })
+    #expect(current.runAttempt == 1)
+    #expect(current.jobs?.map(\.name) == ["ci"])
+    #expect(ETA.estimate(for: current, among: first)?.sampleCount == 1)
+    #expect(LabStub.requests.filter { $0.url?.path.contains("/10/jobs") == true }.count == 1)
+    #expect(LabStub.requests.filter { $0.url?.path.contains("/50/jobs") == true }.count == 2)
+  }
+
+  @Test func doesNotTreatRetriedGitLabJobsAsAFreshPipeline() async throws {
+    let client = makeClient { request in
+      if request.url?.path.hasSuffix("/pipelines") == true {
+        return StubReply(body: Data("[]".utf8))
+      }
+      return StubReply(
+        body: Data(#"[{"name":"ci","status":"failed"},{"name":"ci","status":"running"}]"#.utf8))
+    }
+    let active = makeRun(id: 50, workflow: 101, status: "in_progress", conclusion: nil)
+    let result = try await client.timingHistory(for: [active], repo: project)
+    #expect(result.first?.runAttempt == nil)
+    #expect(ETA.estimate(for: result[0], among: result) == nil)
+    #expect(LabStub.requests.last?.url?.query?.contains("include_retried=true") == true)
+  }
+
   @Test(arguments: [
     ("created", RunState.queued), ("waiting_for_resource", .queued), ("preparing", .queued),
     ("pending", .queued), ("scheduled", .queued), ("running", .running), ("success", .passed),

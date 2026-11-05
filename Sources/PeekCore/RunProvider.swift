@@ -8,10 +8,15 @@ public protocol RunProvider: Sendable {
   func runs(repo: Repo) async throws -> [WorkflowRun]
   func branches(repo: Repo) async throws -> Set<String>?
   func resolvingPullRequests(_ runs: [WorkflowRun], repo: Repo) async -> [WorkflowRun]
+  func timingHistory(for active: [WorkflowRun], repo: Repo) async throws -> [WorkflowRun]
 }
 
 extension RunProvider {
   public func resolvingPullRequests(_ runs: [WorkflowRun], repo: Repo) async -> [WorkflowRun] {
     runs
+  }
+
+  public func timingHistory(for active: [WorkflowRun], repo: Repo) async throws -> [WorkflowRun] {
+    []
   }
 }

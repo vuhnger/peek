@@ -25,9 +25,10 @@ struct FormattingTests {
 
   @Test(
     arguments: [
-      (30.0, "<1m left"), (0, "<1m left"), (59, "<1m left"), (60, "1m left"),
-      (119, "1m left"), (180, "3m left"), (-30, "<1m left"), (-60, "+1m"), (-120, "+2m"),
-      (-179, "+2m"),
+      (30.0, "<1m left"), (0, "Taking longer than expected"), (59, "1m left"), (60, "1m left"),
+      (61, "1m 30s left"), (119, "2m left"), (180, "3m left"),
+      (-30, "Taking longer than expected"), (-60, "Taking longer than expected"),
+      (-120, "Taking longer than expected"), (-179, "Taking longer than expected"),
     ] as [(Double, String)])
   func formatsRemainingTime(secondsLeft: Double, expected: String) {
     #expect(Formatting.remaining(secondsLeft) == expected)
@@ -40,7 +41,7 @@ struct FormattingTests {
     #expect(Formatting.duration(1e30) == Formatting.duration(1e12))
     #expect(Formatting.relative(from: Date(timeIntervalSince1970: .nan), now: t0) == "just now")
     #expect(!Formatting.relative(from: Date(timeIntervalSince1970: -1e30), now: t0).isEmpty)
-    #expect(Formatting.remaining(.nan) == "<1m left")
+    #expect(Formatting.remaining(.nan) == "Taking longer than expected")
     #expect(!Formatting.remaining(.infinity).isEmpty)
     #expect(!Formatting.remaining(-.infinity).isEmpty)
   }

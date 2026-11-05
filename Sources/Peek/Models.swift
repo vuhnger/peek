@@ -16,8 +16,7 @@ final class RunRowModel: Identifiable {
   private(set) var url: URL?
   private(set) var startedAt: Date
   private(set) var activityAt: Date
-  private(set) var median: TimeInterval?
-  private(set) var samples: Int
+  private(set) var estimate: ETAEstimate?
   private static let workflowWidthCap: CGFloat = 150
 
   init(run: WorkflowRun, eta: ETAEstimate?, host: String = Repo.githubHost) {
@@ -30,10 +29,9 @@ final class RunRowModel: Identifiable {
     starter = Formatting.login(run.actor?.login ?? "")
     avatar = AvatarCache.url(run.actor?.avatarUrl)
     url = run.targetLink(host: host)
-    startedAt = run.runStartedAt ?? run.createdAt
+    startedAt = run.queuedAt
     activityAt = run.activityDate
-    median = eta?.median
-    samples = eta?.sampleCount ?? 0
+    estimate = eta
   }
 
   func update(run: WorkflowRun, eta: ETAEstimate?, host: String = Repo.githubHost) {
@@ -45,10 +43,9 @@ final class RunRowModel: Identifiable {
     set(\.starter, Formatting.login(run.actor?.login ?? ""))
     set(\.avatar, AvatarCache.url(run.actor?.avatarUrl))
     set(\.url, run.targetLink(host: host))
-    set(\.startedAt, run.runStartedAt ?? run.createdAt)
+    set(\.startedAt, run.queuedAt)
     set(\.activityAt, run.activityDate)
-    set(\.median, eta?.median)
-    set(\.samples, eta?.sampleCount ?? 0)
+    set(\.estimate, eta)
   }
 
   var workflowWidth: CGFloat {
@@ -59,7 +56,7 @@ final class RunRowModel: Identifiable {
   }
 
   func progress(at now: Date) -> RunProgress? {
-    median.map { ETA.progress(elapsed: now.timeIntervalSince(startedAt), median: $0) }
+    estimate?.progress(elapsed: now.timeIntervalSince(startedAt))
   }
 
   private func set<Value: Equatable>(

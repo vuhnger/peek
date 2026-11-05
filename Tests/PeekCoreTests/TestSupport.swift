@@ -25,7 +25,8 @@ func makeRun(
   attempt: Int = 1,
   pull: Int? = nil,
   sha: String? = nil,
-  mergeRequest: Bool = false
+  mergeRequest: Bool = false,
+  jobs: [WorkflowJob]? = nil
 ) -> WorkflowRun {
   var json: [String: Any] = [
     "id": id,
@@ -46,7 +47,9 @@ func makeRun(
   json["run_started_at"] = started.map { at($0).ISO8601Format() }
   json["updated_at"] = updated.map { at($0).ISO8601Format() }
   let data = try! JSONSerialization.data(withJSONObject: json)
-  return try! JSONDecoder.github.decode(WorkflowRun.self, from: data)
+  var run = try! JSONDecoder.github.decode(WorkflowRun.self, from: data)
+  run.jobs = jobs
+  return run
 }
 
 func successfulRun(
@@ -54,7 +57,7 @@ func successfulRun(
 ) -> WorkflowRun {
   makeRun(
     id: id, workflow: workflow, event: event, created: created, started: created,
-    updated: created + duration)
+    updated: created + duration, jobs: [WorkflowJob(name: "ci", conclusion: "success")])
 }
 
 enum Fixture {

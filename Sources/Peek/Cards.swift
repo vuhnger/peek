@@ -40,7 +40,7 @@ enum Metrics {
 
   @MainActor
   static func rowHeight(_ row: RunRowModel) -> CGFloat {
-    row.state == .running && row.median != nil ? Self.row + bar : Self.row
+    row.state == .running && row.estimate != nil ? Self.row + bar : Self.row
   }
 
   @MainActor
@@ -272,7 +272,7 @@ struct RunRow: View {
             }
         }
         .frame(height: Metrics.row)
-        if row.state == .running, row.median != nil {
+        if row.state == .running, row.estimate != nil {
           RowBar(row: row).frame(height: Metrics.bar, alignment: .top)
         }
       }
@@ -324,9 +324,12 @@ private struct RowTrailing: View {
     let overdue = row.progress(at: now)?.isOverdue == true
     return HStack(spacing: 8) {
       Text(Formatting.duration(elapsed)).foregroundStyle(overdue ? .orange : amber)
-      if let median = row.median {
-        Text((row.samples < 3 ? "~" : "") + Formatting.remaining(median - elapsed))
-          .foregroundStyle(overdue ? .orange : .secondary)
+      if let estimate = row.estimate {
+        Text(
+          estimate.remaining(elapsed: elapsed).map { "~" + Formatting.remaining($0) }
+            ?? "Taking longer than expected"
+        )
+        .foregroundStyle(overdue ? .orange : .secondary)
       }
     }
     .monospacedDigit()

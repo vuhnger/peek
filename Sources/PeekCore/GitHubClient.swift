@@ -22,6 +22,7 @@ public actor GitHubClient: RunProvider {
   private var token: String?
   private var cache: [URL: (etag: String, body: Data)] = [:]
   private var pullNumbers: [String: [String: [Int]]] = [:]
+  private var timingHistories: [String: (fetchedAt: Date, runs: [WorkflowRun])] = [:]
 
   public init(
     configuration: URLSessionConfiguration = .ephemeral,
@@ -112,6 +113,90 @@ public actor GitHubClient: RunProvider {
   public func branches(repo: Repo) async throws -> Set<String>? {
     let (owner, name) = try parts(repo)
     return try await branches(owner: owner, name: name)
+  }
+
+  public func timingHistory(for active: [WorkflowRun], repo: Repo) async throws -> [WorkflowRun] {
+    let (owner, name) = try parts(repo)
+    let base = "repos/\(try segment(owner))/\(try segment(name))/actions"
+    var result: [Int: WorkflowRun] = [:]
+    for original in active {
+      guard let attempt = original.runAttempt, let event = original.event else { continue }
+      var run = original
+      run.jobs = try await jobs(base: base, run: run)
+      result[run.id] = run
+      guard run.jobs?.isEmpty == false else { continue }
+      let path =
+        "\(base)/workflows/\(run.workflowId)/runs"
+        + "?event=\(try segment(event))&status=success&per_page=100"
+      var history = timingHistories[path]
+      if history.map({ now().timeIntervalSince($0.fetchedAt) >= 60 }) ?? true {
+        let page: RunsPage = try await get(path)
+        let previous = Dictionary(
+          (history?.runs ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        history = (
+          now(),
+          page.runs.map { candidate in
+            var candidate = candidate
+            if previous[candidate.id]?.runAttempt == candidate.runAttempt {
+              candidate.jobs = previous[candidate.id]?.jobs
+            }
+            return candidate
+          }
+        )
+      }
+      guard var history else { continue }
+      let indices = history.runs.indices.filter {
+        let candidate = history.runs[$0]
+        return candidate.id != run.id && candidate.state == .passed
+          && candidate.workflowId == run.workflowId && candidate.event == event
+          && candidate.runAttempt.map { ($0 > 1) == (attempt > 1) } == true
+      }
+      var matches = 0
+      for offset in stride(from: 0, to: indices.count, by: 4) {
+        let batch = indices[offset..<min(offset + 4, indices.count)]
+        let enriched = try await withThrowingTaskGroup(of: (Int, WorkflowRun).self) { group in
+          for index in batch {
+            let candidate = history.runs[index]
+            group.addTask {
+              var candidate = candidate
+              if candidate.jobs == nil {
+                candidate.jobs = try await self.jobs(base: base, run: candidate)
+              }
+              return (index, candidate)
+            }
+          }
+          var enriched: [(Int, WorkflowRun)] = []
+          for try await item in group { enriched.append(item) }
+          return enriched
+        }
+        for (index, candidate) in enriched {
+          history.runs[index] = candidate
+          result[candidate.id] = candidate
+          if ETA.comparable(run, candidate) { matches += 1 }
+        }
+        if matches >= ETA.maxSamples { break }
+      }
+      timingHistories[path] = history
+    }
+    return Array(result.values)
+  }
+
+  private struct JobsPage: Decodable {
+    let totalCount: Int
+    let jobs: [WorkflowJob]
+  }
+
+  private func jobs(base: String, run: WorkflowRun) async throws -> [WorkflowJob] {
+    guard let attempt = run.runAttempt else { return [] }
+    var jobs: [WorkflowJob] = []
+    for page in 1...10 {
+      let result: JobsPage = try await get(
+        "\(base)/runs/\(run.id)/attempts/\(attempt)/jobs?per_page=100&page=\(page)")
+      jobs += result.jobs
+      if jobs.count >= result.totalCount { return jobs }
+      guard !result.jobs.isEmpty else { throw GitHubError.decoding }
+    }
+    throw GitHubError.decoding
   }
 
   private func parts(_ repo: Repo) throws -> (String, String) {

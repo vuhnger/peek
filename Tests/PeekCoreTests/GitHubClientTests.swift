@@ -52,6 +52,71 @@ private func lookups() -> [URLRequest] {
 
 @Suite(.serialized)
 struct GitHubClientTests {
+  @Test func enrichesTheCurrentAttemptAndCachesCompletedJobHistory() async throws {
+    let history = Data(
+      """
+      {"workflow_runs":[
+        {"id":40,"workflow_id":1,"event":"push","run_attempt":1,"status":"completed","conclusion":"success","created_at":"2023-11-14T22:13:20Z","updated_at":"2023-11-14T22:14:20Z"},
+        {"id":41,"workflow_id":1,"event":"push","run_attempt":2,"status":"completed","conclusion":"success","created_at":"2023-11-14T22:13:20Z","updated_at":"2023-11-14T22:14:20Z"}
+      ]}
+      """.utf8)
+    let (client, _) = makeClient { request in
+      if request.url?.path.contains("/workflows/") == true { return StubReply(body: history) }
+      return StubReply(
+        body: Data(#"{"total_count":1,"jobs":[{"name":"ci","status":"in_progress"}]}"#.utf8))
+    }
+    let active = makeRun(id: 50, status: "in_progress", conclusion: nil)
+    let first = try await client.timingHistory(for: [active], repo: lookupRepo)
+    let second = try await client.timingHistory(for: [active], repo: lookupRepo)
+    #expect(first.sorted { $0.id < $1.id } == second.sorted { $0.id < $1.id })
+    #expect(first.first { $0.id == 50 }?.jobs?.map(\.name) == ["ci"])
+    #expect(first.first { $0.id == 40 }?.jobs?.map(\.name) == ["ci"])
+    #expect(!first.contains { $0.id == 41 })
+    #expect(
+      StubProtocol.requests.filter { $0.url?.path.contains("/workflows/") == true }.count == 1)
+    #expect(
+      StubProtocol.requests.filter { $0.url?.path.contains("/40/attempts/1/jobs") == true }.count
+        == 1)
+    #expect(
+      StubProtocol.requests.filter { $0.url?.path.contains("/50/attempts/1/jobs") == true }.count
+        == 2)
+  }
+
+  @Test func retrievesAllJobsBeforeMatchingAWorkload() async throws {
+    let first = try JSONSerialization.data(withJSONObject: [
+      "total_count": 101, "jobs": Array(repeating: ["name": "ci"], count: 100),
+    ])
+    let (client, _) = makeClient { request in
+      if request.url?.path.contains("/workflows/") == true {
+        return StubReply(body: Data(#"{"workflow_runs":[]}"#.utf8))
+      }
+      if request.url?.query?.contains("page=2") == true {
+        return StubReply(body: Data(#"{"total_count":101,"jobs":[{"name":"test"}]}"#.utf8))
+      }
+      return StubReply(body: first)
+    }
+    let active = makeRun(id: 50, status: "in_progress", conclusion: nil)
+    let result = try await client.timingHistory(for: [active], repo: lookupRepo)
+    #expect(result.first?.jobs?.count == 101)
+    #expect(result.first?.jobs?.last?.name == "test")
+  }
+
+  @Test func boundsIncompleteJobPaginationInsteadOfUsingATruncatedWorkload() async {
+    let (client, _) = makeClient { _ in
+      StubReply(body: Data(#"{"total_count":1001,"jobs":[{"name":"ci"}]}"#.utf8))
+    }
+    await #expect(throws: GitHubError.decoding) {
+      try await client.timingHistory(for: [makeRun(id: 50)], repo: lookupRepo)
+    }
+    #expect(StubProtocol.requests.count == 10)
+  }
+
+  @Test func doesNotFetchTimingHistoryWithoutActiveRuns() async throws {
+    let (client, _) = makeClient { _ in StubReply(status: 500) }
+    #expect(try await client.timingHistory(for: [], repo: lookupRepo).isEmpty)
+    #expect(StubProtocol.requests.isEmpty)
+  }
+
   @Test func eachRequestHasAFifteenSecondTimeoutAndIgnoresLocalCaches() async throws {
     let (client, _) = makeClient { _ in ok("user") }
     _ = try await client.viewer()

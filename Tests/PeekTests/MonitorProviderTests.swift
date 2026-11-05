@@ -87,10 +87,18 @@ private final class ScriptedProvider: RunProvider, @unchecked Sendable {
   let repo: Repo
   private let lock = NSLock()
   private var current: [WorkflowRun] = []
+  private var timing: [WorkflowRun] = []
+  private var timingFailure: GitHubError?
 
   init(repo: Repo) { self.repo = repo }
 
   func set(_ runs: [WorkflowRun]) { lock.withLock { current = runs } }
+  func setTiming(_ runs: [WorkflowRun], failure: GitHubError? = nil) {
+    lock.withLock {
+      timing = runs
+      timingFailure = failure
+    }
+  }
 
   func viewer() async throws -> Viewer { Viewer(id: 1, login: "me") }
   func repos() async throws -> [Repo] { [repo] }
@@ -99,6 +107,12 @@ private final class ScriptedProvider: RunProvider, @unchecked Sendable {
   }
   func branches(repo: Repo) async throws -> Set<String>? { nil }
   func runs(repo: Repo) async throws -> [WorkflowRun] { lock.withLock { current } }
+  func timingHistory(for active: [WorkflowRun], repo: Repo) async throws -> [WorkflowRun] {
+    try lock.withLock {
+      if let timingFailure { throw timingFailure }
+      return timing
+    }
+  }
 }
 
 private func pullRequestRun(_ id: Int, branch: String, actor: String, status: String)
@@ -120,6 +134,44 @@ private func repo(host: String, id: Int = 1) -> Repo {
 
 @MainActor
 struct MonitorProviderTests {
+  @Test func panelAndMenuUseEnrichedHistoryAndKeepLiveStatusWhenEstimatesFail() async throws {
+    let github = ScriptedProvider(repo: repo(host: Repo.githubHost))
+    let now = Date()
+    func run(_ id: Int, start: Date, finished: Date?) throws -> WorkflowRun {
+      var json: [String: Any] = [
+        "id": id, "workflow_id": 1, "event": "push", "run_attempt": 1,
+        "created_at": start.ISO8601Format(),
+        "run_started_at": start.addingTimeInterval(20).ISO8601Format(),
+        "status": finished == nil ? "in_progress" : "completed", "head_branch": "main",
+        "actor": ["id": 1, "login": "me"], "head_repository": ["id": 1, "full_name": "foo/bar"],
+        "pull_requests": [["number": 42]],
+      ]
+      json["updated_at"] = finished?.ISO8601Format()
+      json["conclusion"] = finished.map { _ in "success" }
+      return try JSONDecoder.github.decode(
+        WorkflowRun.self, from: JSONSerialization.data(withJSONObject: json))
+    }
+    var active = try run(1, start: now.addingTimeInterval(-30), finished: nil)
+    github.set([active])
+    active.jobs = [WorkflowJob(name: "ci", status: "in_progress")]
+    var previous = try run(
+      100, start: now.addingTimeInterval(-3600), finished: now.addingTimeInterval(-3500))
+    previous.jobs = [WorkflowJob(name: "ci", conclusion: "success")]
+    github.setTiming([active, previous])
+    let monitor = Monitor(github: github, gitLab: { [] })
+    await monitor.pollOnce()
+    let row = try #require(monitor.repos.first?.branches.first?.rows.first)
+    #expect(row.estimate?.durations == [100])
+    #expect(row.startedAt == active.createdAt)
+    #expect(row.pullRequest == 42)
+    #expect(monitor.menuBarGlyph == .running(progress: 0.25))
+    github.setTiming([], failure: .server(503))
+    await monitor.pollOnce()
+    #expect(row.state == .running)
+    #expect(row.estimate == nil)
+    #expect(monitor.menuBarGlyph == .running(progress: nil))
+  }
+
   @Test func onlyDisplayedRunsAreResolvedAndTheNumberReachesTheRow() async {
     let github = RecordingProvider(repo: repo(host: Repo.githubHost))
     let monitor = Monitor(github: github, gitLab: { [] })

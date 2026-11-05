@@ -86,6 +86,27 @@ public struct PullRequestRef: Decodable, Sendable, Equatable {
   }
 }
 
+public struct WorkflowJob: Decodable, Sendable, Equatable {
+  public let name: String
+  public let status: String?
+  public let conclusion: String?
+  public let createdAt: Date?
+  public let startedAt: Date?
+  public let completedAt: Date?
+
+  public init(
+    name: String, status: String? = nil, conclusion: String? = nil,
+    createdAt: Date? = nil, startedAt: Date? = nil, completedAt: Date? = nil
+  ) {
+    self.name = name
+    self.status = status
+    self.conclusion = conclusion
+    self.createdAt = createdAt
+    self.startedAt = startedAt
+    self.completedAt = completedAt
+  }
+}
+
 public struct WorkflowRun: Decodable, Sendable, Equatable, Identifiable {
   public let id: Int
   public let workflowId: Int
@@ -98,7 +119,7 @@ public struct WorkflowRun: Decodable, Sendable, Equatable, Identifiable {
   public let headBranch: String?
   public var pullRequests: [PullRequestRef]?
   public let headSha: String?
-  public let runAttempt: Int?
+  public var runAttempt: Int?
   public let runStartedAt: Date?
   public let updatedAt: Date?
   public let htmlUrl: String?
@@ -106,6 +127,7 @@ public struct WorkflowRun: Decodable, Sendable, Equatable, Identifiable {
   public let triggeringActor: Account?
   public let headRepository: RepoRef?
   public let isMergeRequest: Bool?
+  public var jobs: [WorkflowJob]?
 
   public init(
     id: Int, workflowId: Int, createdAt: Date, name: String?, displayTitle: String?,
@@ -132,6 +154,10 @@ public struct WorkflowRun: Decodable, Sendable, Equatable, Identifiable {
     self.triggeringActor = nil
     self.headRepository = headRepository
     self.isMergeRequest = isMergeRequest
+  }
+
+  public var queuedAt: Date {
+    return (runAttempt ?? 1) > 1 ? runStartedAt ?? createdAt : createdAt
   }
 
   public var state: RunState {

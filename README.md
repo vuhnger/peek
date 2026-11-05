@@ -9,4 +9,10 @@ The first launch says Apple could not verify Peek is free of malware, because th
 Run `gh auth login` first. Peek uses your GitHub CLI login.
 For GitLab, run `glab auth login`.
 
+Time estimates include queue time and use up to 30 comparable successful runs, with a 90th-percentile duration and at least a 10% safety margin.
+Peek matches observed jobs, separates GitHub retries, and stops predicting when the run outlasts its history; GitLab retries without a reliable attempt boundary show elapsed time only.
+
+Replay before/after accuracy with `swiftc -parse-as-library Sources/PeekCore/{Models,RepoPath,ETA}.swift scripts/evaluate-eta.swift -o /tmp/evaluate-eta` and `/tmp/evaluate-eta dataset.json results.json`.
+The dataset contains a `runs` array of GitHub workflow records with `repo`, `split` set to `warmup` or `holdout`, and attempt-specific `jobs` including their creation, start and completion timestamps.
+
 GPL-3.0
