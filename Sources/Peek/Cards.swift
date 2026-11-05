@@ -254,7 +254,8 @@ struct RunRow: View {
         HStack(spacing: 7) {
           RowGlyph(row: row)
           Text(row.workflow).fontWeight(.medium).lineLimit(1)
-            .frame(width: row.workflowWidth, alignment: .leading).layoutPriority(1)
+            .frame(minWidth: row.workflowWidth, alignment: .leading)
+            .layoutPriority(1)
           if let number = row.pullRequest {
             Text("\(row.isMergeRequest ? "!" : "#")\(number)").monospacedDigit().foregroundStyle(
               .tertiary
@@ -323,9 +324,18 @@ private struct RowTrailing: View {
     let elapsed = now.timeIntervalSince(row.startedAt)
     let overdue = row.progress(at: now)?.isOverdue == true
     return HStack(spacing: 8) {
-      Text(Formatting.duration(elapsed)).foregroundStyle(overdue ? .orange : amber)
+      Text(Formatting.duration(elapsed))
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .foregroundStyle(overdue ? .orange : amber)
       if let estimate = row.estimate {
         Text(
+          estimate.remaining(elapsed: elapsed).map { "~" + Formatting.remaining($0) }
+            ?? "Taking longer"
+        )
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .accessibilityLabel(
           estimate.remaining(elapsed: elapsed).map { "~" + Formatting.remaining($0) }
             ?? "Taking longer than expected"
         )
